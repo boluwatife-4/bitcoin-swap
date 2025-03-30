@@ -79,3 +79,57 @@
     {pool-id: uint, provider: principal}
     {shares: uint}
 )
+
+(define-map accumulated-fees
+    principal
+    uint
+)
+
+;; Private Functions
+(define-private (calculate-output-amount
+    (input-amount uint)
+    (input-reserve uint)
+    (output-reserve uint)
+)
+    (let
+        (
+            (input-with-fee (mul input-amount (- PRECISION (var-get protocol-fee-rate))))
+            (numerator (mul input-with-fee output-reserve))
+            (denominator (+ (mul input-reserve PRECISION) input-with-fee))
+        )
+        (/ numerator denominator)
+    )
+)
+
+(define-private (mint-pool-tokens
+    (pool-id uint)
+    (amount-x uint)
+    (amount-y uint)
+    (recipient principal)
+)
+    (let
+        (
+            (pool (unwrap! (map-get? pools pool-id) ERR-POOL-NOT-FOUND))
+            (total-shares (get total-shares pool))
+            (shares-to-mint (if (is-eq total-shares u0)
+                (mul amount-x amount-y)
+                (min
+                    (/ (mul amount-x total-shares) (get reserve-x pool))
+                    (/ (mul amount-y total-shares) (get reserve-y pool))
+                )
+            ))
+        )
+        (map-set pools pool-id
+            (merge pool {
+                reserve-x: (+ (get reserve-x pool) amount-x),
+                reserve-y: (+ (get reserve-y pool) amount-y),
+                total-shares: (+ total-shares shares-to-mint)
+            })
+        )
+        (map-set liquidity-providers
+            {pool-id: pool-id, provider: recipient}
+            {shares: (+ (default-to u0 (get shares (map-get? liquidity-providers {pool-id: pool-id, provider: recipient}))) shares-to-mint)}
+        )
+        (ok shares-to-mint)
+    )
+)
