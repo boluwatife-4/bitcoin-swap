@@ -304,3 +304,55 @@
         )
     )
 )
+
+;; Read-only functions
+(define-read-only (get-pool-info (pool-id uint))
+    (map-get? pools pool-id)
+)
+
+(define-read-only (get-provider-shares (pool-id uint) (provider principal))
+    (map-get? liquidity-providers {pool-id: pool-id, provider: provider})
+)
+
+(define-read-only (get-exchange-rate (pool-id uint))
+    (let
+        (
+            (pool (unwrap! (map-get? pools pool-id) ERR-POOL-NOT-FOUND))
+        )
+        (ok (/ (mul (get reserve-y pool) PRECISION) (get reserve-x pool)))
+    )
+)
+
+;; Administrative functions
+(define-public (set-protocol-fee (new-fee uint))
+    (begin
+        (asserts! (is-eq tx-sender CONTRACT-OWNER) ERR-NOT-AUTHORIZED)
+        (asserts! (<= new-fee PRECISION) ERR-INVALID-AMOUNT)
+        (var-set protocol-fee-rate new-fee)
+        (ok true)
+    )
+)
+
+(define-public (pause-pool (pool-id uint))
+    (let
+        (
+            (pool (unwrap! (map-get? pools pool-id) ERR-POOL-NOT-FOUND))
+        )
+        (asserts! (is-eq tx-sender CONTRACT-OWNER) ERR-NOT-AUTHORIZED)
+        (asserts! (get active pool) ERR-POOL-NOT-FOUND)
+        (ok (map-set pools pool-id 
+            (merge pool {active: false})))
+    )
+)
+
+(define-public (resume-pool (pool-id uint))
+    (let
+        (
+            (pool (unwrap! (map-get? pools pool-id) ERR-POOL-NOT-FOUND))
+        )
+        (asserts! (is-eq tx-sender CONTRACT-OWNER) ERR-NOT-AUTHORIZED)
+        (asserts! (not (get active pool)) ERR-POOL-NOT-FOUND)
+        (ok (map-set pools pool-id 
+            (merge pool {active: true})))
+    )
+)
